@@ -125,6 +125,8 @@ kubectl apply -f metallb-config.yaml
 #        - alsabagtech.com
 #        - bacteria.alsabagtech.com
 #        - bacteria-backend.alsabagtech.com
+#        - livecaption-backend.alsabagtech.com
+#        - livecaption.alsabagtech.com
 #        ip: 192.168.1.246
 
 
