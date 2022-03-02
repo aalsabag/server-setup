@@ -47,14 +47,17 @@ rm -rf get_helm.sh
 # untaint master
 kubectl taint nodes --all node-role.kubernetes.io/master-
 # install ingress
-kubectl create namespace ingress
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v0.43.0/deploy/static/provider/cloud/deploy.yaml
+kubectl create namespace ingress-nginx
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+helm install ingress-nginx ingress-nginx/ingress-nginx --devel --version 4.0.0-beta.3
+#kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v0.49.0/deploy/static/provider/cloud/deploy.yaml
 
 # install cert manager
 kubectl create namespace cert-manager
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
-helm install cert-manager jetstack/cert-manager --namespace cert-manager --version v1.1.0 --set installCRDs=true
+helm install cert-manager jetstack/cert-manager --namespace cert-manager --version v1.5.0 --set installCRDs=true
 
 # create cluster issuer
 tee -a cluster-issuer.yaml << EOF
@@ -97,8 +100,8 @@ kubectl get configmap kube-proxy -n kube-system -o yaml | \
 sed -e "s/strictARP: false/strictARP: true/" | \
 kubectl apply -f - -n kube-system
 
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.9.5/manifests/namespace.yaml
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.9.5/manifests/metallb.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.10.2/manifests/namespace.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.10.2/manifests/metallb.yaml
 # On first install only
 kubectl create secret generic -n metallb-system memberlist --from-literal=secretkey="$(openssl rand -base64 128)"
 
@@ -114,7 +117,7 @@ data:
     - name: default
       protocol: layer2
       addresses:
-      - 192.168.1.246-192.168.1.247
+      - 192.168.1.19-192.168.1.20
 EOF
 kubectl apply -f metallb-config.yaml
 
@@ -125,14 +128,29 @@ kubectl apply -f metallb-config.yaml
 #        - alsabagtech.com
 #        - bacteria.alsabagtech.com
 #        - bacteria-backend.alsabagtech.com
-#        - livecaption-backend.alsabagtech.com
-#        - livecaption.alsabagtech.com
 #        ip: 192.168.1.246
 
 
+#keep container running
+#apiVersion: v1
+#kind: Pod
+#metadata:
+#  name: ubuntu
+#spec:
+#  containers:
+#  - name: ubuntu
+#    image: ubuntu:latest
+#    # Just spin & wait forever
+#    command: [ "/bin/bash", "-c", "--" ]
+#    args: [ "while true; do sleep 30; done;" ]
 
-
-
+#Enable inbound traffic
+sudo iptables -F && sudo iptables -t nat -F && sudo iptables -t mangle -F && sudo iptables -X
+sudo iptables -I INPUT -p tcp -m tcp --dport 32400 -j ACCEPT
+sudo iptables -I INPUT -p tcp -m tcp --dport 1935 -j ACCEPT
+sudo iptables -I INPUT -p tcp -m tcp --dport 443 -j ACCEPT
+sudo iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+sudo iptables -I INPUT -p tcp -m tcp --dport 6443 -j ACCEPT
 # Plex
 curl https://downloads.plex.tv/plex-keys/PlexSign.key | sudo apt-key add -
 echo deb https://downloads.plex.tv/repo/deb public main | sudo tee /etc/apt/sources.list.d/plexmediaserver.list
@@ -166,3 +184,15 @@ sudo chown -R plex: /opt/plexmedia
 #sudo openssl pkcs12 -export -nocerts -inkey key.pem -out key.p12
 #chown plex:plex key.p12
 #sudo systemctl restart plexmediaserver
+
+
+#Certbot configuration #MUST BE DONE ON ANOTHER MACHINE#!!
+sudo add-apt-repository ppa:certbot/certbot
+sudo apt-get install certbot
+sudo certbot certonly --manual --preferred-challenges=dns --email macalsabag@hotmail.com --server https://acme-v02.api.letsencrypt.org/directory --agre
+e-tos -d *.alsabagtech.com
+# Go into namecheap and create a TXT record where "*" is the host and value is the value provided
+# your pub and priv key will be stored here /etc/letsencrypt/live/alsabagtech.com/fullchain.pem and here /etc/letsencrypt/live/alsabagtech.com/privkey.pem
+# cat them out
+# Create these two files vi ./cluster-wide.pem ./cluster-wide-key.pem the first containing the cert and the second containing the private key
+k create secret tls cluster-wide-tls --cert=./cluster-wide.pem --key=./cluster-wide-key.pem -n kube-system
